@@ -2,12 +2,11 @@
 #include <stdlib.h>
 #include <string.h>
 
-struct link
+typedef struct link
 {
     char * line;
     struct link * pNext;
-    struct link * pNext;
-
+    struct link * pPrevious;
 } LINK;
 
 void checkInputFileNames(const char *firstName, const char *secondName)
@@ -30,7 +29,17 @@ void checkFile(FILE * file, char * name)
         
 }
 
-void checkMalloc(char * input) 
+void checkMallocChar(char * input) 
+{
+    if (input == NULL)
+    {
+        fprintf(stderr, "malloc failed\n");
+        exit(1);
+    }
+    
+}
+
+void checkMallocLink(LINK * input) 
 {
     if (input == NULL)
     {
@@ -45,67 +54,149 @@ char * readLineCharbyChar(FILE * file)
     int c;
     int index = 0;
     char * line = (char *) malloc(2);
-    checkMalloc(line);
+    checkMallocChar(line);
 
     while ((c = getc(file)) != 10)
     {
         if (c == EOF)
         {
-            printf("%s\n", line);
             return line;
         }
-        
-        line = realloc(line, (strlen(line) + 1) * sizeof(line));
+        line = realloc(line, (strlen(line) + 1));
+        checkMallocChar(line);
         line[index++] = (char) c;
     }
     line[index] = '\0';
-    printf("\n%s\n", line);
     return line;
 }
 
 // TODO ADD NAME PARAMETER
-void readFile() 
+LINK * readFile(FILE * file, LINK * pStart) 
 {
-    FILE * file;
-    file = fopen("test.txt", "r");
-    checkFile(file, "test.txt");
+    LINK * addLink(LINK * pStart, char * line);
 
+    fprintf(stdout, "[INFO]: Reading file\n");
     while (feof(file) == 0)
     {
-        readLineCharbyChar(file);
+        char * line;
+        line = readLineCharbyChar(file);
+        pStart = addLink(pStart, line);
     }
+    fprintf(stdout, "[INFO]: Reading complete\n");
+    return pStart;
+}
+
+LINK * addLink(LINK * pStart, char * line) 
+{
+    LINK * getLastLink(LINK * pStart);
+
+    LINK * pOriginalStart = pStart;
+    LINK * pNew = (LINK *) malloc(sizeof(LINK) + strlen(line));
+    checkMallocLink(pNew); 
+    pNew->line = line;
+    pNew->pNext = NULL;
+
+    if (pStart == NULL)
+    {
+        pStart = pNew;
+        fprintf(stdout, "[INFO]: Memory allocated (Link added)\n");
+        return pStart;
+    }
+    else
+    {
+        pStart = getLastLink(pStart);
+        pStart->pNext = pNew;
+        pNew->pPrevious = pStart;        
+    }
+    fprintf(stdout, "[INFO]: Memory allocated (Link added)\n");
+    return pOriginalStart;
+}
+
+void writeToOutput(FILE * output, LINK * start, int reversed)
+{
+    printf("[INFO]: Writing linked list\n");
+    LINK * getLastLink(LINK * pStart);
+    LINK * pBuffer = NULL;
+    if (reversed == 1)
+    {
+        start = getLastLink(start);
+        while (start != NULL)
+        {
+            fprintf(output, "[INFO]: Link: %.100s\n", start->line);
+            pBuffer = start->pPrevious;
+            start = pBuffer;
+        }
+    }
+    else
+    {
+        while (start != NULL)
+        {
+            fprintf(output, "LINK: %.30s\n", start->line);
+            pBuffer = start->pNext;
+            start = pBuffer;
+        }
+    }
+    printf("[INFO]: Linked list written\n");
+}
+
+LINK * getLastLink(LINK * pStart)
+{
+    while (pStart->pNext != NULL)
+    {
+        pStart = pStart->pNext;
+    }
+    return pStart;
+}
+
+void freeList(LINK * pStart)
+{
+    fprintf(stdout, "[INFO]: Freeing memory\n");
+    LINK * pBuffer = NULL;
+    while (pStart != NULL)
+    {
+        pBuffer = pStart->pNext;
+        free(pStart);
+        pStart = pBuffer;
+    }
+    fprintf(stdout, "[INFO]: Memory freed\n");
 }
 
 int main(int argc, char const *argv[])
 {
-    if (argc == 3)
-    {
-    }
-    if (argc > 3)
-    {
-        fprintf(stderr, "usage: <input> <output>\n");
-        exit(1);
-    }
+    FILE * inputFile;
+    FILE * outputFile = stdout;
+    LINK * pStart = NULL;
 
-    // TODO MAKE CASES FOR ARGC 1, 2, 3
-
+    fprintf(stdout, "[INFO]: Program started!\n");
     switch (argc)
     {
     case 1:
-        /* code */
+        inputFile = stdin;
+        pStart = readFile(inputFile, pStart);
         break;
     case 2:
-        /* code */
+        inputFile = fopen(argv[1], "r");
+        checkFile(inputFile, (char *)argv[1]);
+        pStart = readFile(inputFile, pStart);
         break;
     case 3:
         checkInputFileNames(argv[1], argv[2]);
+        inputFile = fopen(argv[1], "r");
+        outputFile = fopen(argv[2], "w");
+        
+        checkFile(inputFile, (char *)argv[1]);
+        checkFile(outputFile, (char *)argv[2]);
+        pStart = readFile(inputFile, pStart);
         break;
     default:
         fprintf(stderr, "usage: <input> <output>\n");
         exit(1);
         break;
     }
-    readFile();
-
-    return 0;
+    writeToOutput(outputFile, pStart, 0);
+    freeList(pStart);
+    fclose(inputFile);
+    fclose(outputFile);
+    fprintf(stdout, "[INFO]: Program ended\n\n");
+    exit(0);
 }
