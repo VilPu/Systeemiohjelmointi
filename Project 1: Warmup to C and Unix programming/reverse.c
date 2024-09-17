@@ -1,128 +1,131 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 
 typedef struct link
 {
-    char * line;
-    struct link * pNext;
-    struct link * pPrevious;
+    char *line;
+    struct link *pNext;
+    struct link *pPrevious;
 } LINK;
 
 void checkInputFileNames(const char *firstName, const char *secondName)
 {
-    if (strcmp(firstName, secondName) == 0)
+    struct stat pFirstNameBuf;
+    struct stat pSecondNameBuf;
+
+    stat(firstName, &pFirstNameBuf);
+    stat(secondName, &pSecondNameBuf);
+    if (pFirstNameBuf.st_ino == pSecondNameBuf.st_ino || strcmp(firstName, secondName) == 0)
     {
-        fprintf(stderr, "Input and output file must differ\n");
+        fprintf(stderr, "reverse: input and output file must differ\n");
         exit(1);
     }
     return;
 }
 
-void checkFile(FILE * file, char * name) 
+void checkFile(FILE *file, char *name)
 {
     if (file == NULL)
     {
-        fprintf(stderr, "error: cannot open file '%s'\n", name);
+        fprintf(stderr, "reverse: cannot open file '%s'\n", name);
         exit(1);
     }
-        
 }
 
-void checkMallocChar(char * input) 
+void checkMallocChar(char *input)
 {
     if (input == NULL)
     {
         fprintf(stderr, "malloc failed\n");
         exit(1);
     }
-    
 }
 
-void checkMallocLink(LINK * input) 
+void checkMallocLink(LINK *input)
 {
     if (input == NULL)
     {
         fprintf(stderr, "malloc failed\n");
         exit(1);
     }
-    
 }
 
-char * readLineCharbyChar(FILE * file) 
+char *readLineCharbyChar(FILE *file)
 {
     int c;
     int index = 0;
-    char * line = (char *) malloc(2);
+    char *line = (char *)malloc(2);
     checkMallocChar(line);
 
     while ((c = getc(file)) != 10)
     {
         if (c == EOF)
         {
-            return line;
+            free(line);
+            return NULL;
         }
         line = realloc(line, (strlen(line) + 1));
         checkMallocChar(line);
-        line[index++] = (char) c;
+        line[index++] = (char)c;
     }
     line[index] = '\0';
     return line;
 }
 
-// TODO ADD NAME PARAMETER
-LINK * readFile(FILE * file, LINK * pStart) 
+LINK *readFile(FILE *file, LINK *pStart)
 {
-    LINK * addLink(LINK * pStart, char * line);
+    LINK *addLink(LINK * pStart, char *line);
 
-    fprintf(stdout, "[INFO]: Reading file\n");
     while (feof(file) == 0)
     {
-        char * line;
+        char *line;
         line = readLineCharbyChar(file);
+        if (line == NULL)
+        {
+            break;
+        }
+
         pStart = addLink(pStart, line);
     }
-    fprintf(stdout, "[INFO]: Reading complete\n");
     return pStart;
 }
 
-LINK * addLink(LINK * pStart, char * line) 
+LINK *addLink(LINK *pStart, char *line)
 {
-    LINK * getLastLink(LINK * pStart);
+    LINK *getLastLink(LINK * pStart);
 
-    LINK * pOriginalStart = pStart;
-    LINK * pNew = (LINK *) malloc(sizeof(LINK) + strlen(line));
-    checkMallocLink(pNew); 
+    LINK *pOriginalStart = pStart;
+    LINK *pNew = (LINK *)malloc(sizeof(LINK) + strlen(line));
+    checkMallocLink(pNew);
     pNew->line = line;
     pNew->pNext = NULL;
 
     if (pStart == NULL)
     {
         pStart = pNew;
-        fprintf(stdout, "[INFO]: Memory allocated (Link added)\n");
         return pStart;
     }
     else
     {
         pStart = getLastLink(pStart);
         pStart->pNext = pNew;
-        pNew->pPrevious = pStart;        
+        pNew->pPrevious = pStart;
     }
-    fprintf(stdout, "[INFO]: Memory allocated (Link added)\n");
     return pOriginalStart;
 }
 
-void writeToOutput(FILE * output, LINK * start, int reversed)
+void writeToOutput(FILE *output, LINK *start, int reversed)
 {
-    printf("[INFO]: Writing linked list\n");
-    LINK * getLastLink(LINK * pStart);
-    LINK * pBuffer = NULL;
+    LINK *getLastLink(LINK * pStart);
+    LINK *pBuffer = NULL;
     if (reversed == 1)
     {
         start = getLastLink(start);
         while (start != NULL)
         {
-            fprintf(output, "[INFO]: Link: %.100s\n", start->line);
+            fprintf(output, "%s\n", start->line);
             pBuffer = start->pPrevious;
             start = pBuffer;
         }
@@ -136,38 +139,35 @@ void writeToOutput(FILE * output, LINK * start, int reversed)
             start = pBuffer;
         }
     }
-    printf("[INFO]: Linked list written\n");
 }
 
-LINK * getLastLink(LINK * pStart)
+LINK *getLastLink(LINK *pStart)
 {
-    while (pStart->pNext != NULL)
+    while (pStart != NULL && pStart->pNext != NULL)
     {
         pStart = pStart->pNext;
     }
     return pStart;
 }
 
-void freeList(LINK * pStart)
+void freeList(LINK *pStart)
 {
-    fprintf(stdout, "[INFO]: Freeing memory\n");
-    LINK * pBuffer = NULL;
+    LINK *pBuffer = NULL;
     while (pStart != NULL)
     {
         pBuffer = pStart->pNext;
+        free(pStart->line);
         free(pStart);
         pStart = pBuffer;
     }
-    fprintf(stdout, "[INFO]: Memory freed\n");
 }
 
 int main(int argc, char const *argv[])
 {
-    FILE * inputFile;
-    FILE * outputFile = stdout;
-    LINK * pStart = NULL;
+    FILE *inputFile;
+    FILE *outputFile = stdout;
+    LINK *pStart = NULL;
 
-    fprintf(stdout, "[INFO]: Program started!\n");
     switch (argc)
     {
     case 1:
@@ -180,23 +180,21 @@ int main(int argc, char const *argv[])
         pStart = readFile(inputFile, pStart);
         break;
     case 3:
-        checkInputFileNames(argv[1], argv[2]);
         inputFile = fopen(argv[1], "r");
         outputFile = fopen(argv[2], "w");
-        
         checkFile(inputFile, (char *)argv[1]);
         checkFile(outputFile, (char *)argv[2]);
+        checkInputFileNames(argv[1], argv[2]);
         pStart = readFile(inputFile, pStart);
         break;
     default:
-        fprintf(stderr, "usage: <input> <output>\n");
+        fprintf(stderr, "usage: reverse <input> <output>\n");
         exit(1);
         break;
     }
-    writeToOutput(outputFile, pStart, 0);
+    writeToOutput(outputFile, pStart, 1);
     freeList(pStart);
     fclose(inputFile);
     fclose(outputFile);
-    fprintf(stdout, "[INFO]: Program ended\n\n");
     exit(0);
 }
