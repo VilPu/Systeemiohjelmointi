@@ -3,6 +3,7 @@
 #include <string.h>
 #include <sys/stat.h>
 
+// struct for the linked list
 typedef struct link
 {
     char *line;
@@ -10,6 +11,9 @@ typedef struct link
     struct link *pPrevious;
 } LINK;
 
+// checks input and output files to check if they have the same name or are the same file
+// inspiration to use stat from: https://stackoverflow.com/questions/15650488/determining-if-two-file-paths-point-to-same-file-under-linux-c
+// returns void
 void checkInputFileNames(const char *firstName, const char *secondName)
 {
     struct stat pFirstNameBuf;
@@ -25,6 +29,8 @@ void checkInputFileNames(const char *firstName, const char *secondName)
     return;
 }
 
+// checks if the opening of the file was successful if not throws an error and exits the program with code 1
+// returns void
 void checkFile(FILE *file, char *name)
 {
     if (file == NULL)
@@ -32,8 +38,11 @@ void checkFile(FILE *file, char *name)
         fprintf(stderr, "reverse: cannot open file '%s'\n", name);
         exit(1);
     }
+    return;
 }
 
+// checks if the memory allocation for a char was successful if not throws an error and exits the program with code 1
+// returns void
 void checkMallocChar(char *input)
 {
     if (input == NULL)
@@ -41,8 +50,11 @@ void checkMallocChar(char *input)
         fprintf(stderr, "malloc failed\n");
         exit(1);
     }
+    return;
 }
 
+// checks if the memory allocation for a struct link was successful if not throws an error and exits the program with code 1
+// returns void
 void checkMallocLink(LINK *input)
 {
     if (input == NULL)
@@ -52,6 +64,8 @@ void checkMallocLink(LINK *input)
     }
 }
 
+// function to read a line, stops the reading at a newline character
+// returns a string representing the line
 char *readLineCharbyChar(FILE *file)
 {
     int c;
@@ -59,7 +73,7 @@ char *readLineCharbyChar(FILE *file)
     char *line = (char *)malloc(2);
     checkMallocChar(line);
 
-    while ((c = getc(file)) != 10)
+    while ((c = getc(file)) != 10) // in ASCII 10 == '\n'
     {
         if (c == EOF)
         {
@@ -70,10 +84,12 @@ char *readLineCharbyChar(FILE *file)
         checkMallocChar(line);
         line[index++] = (char)c;
     }
-    line[index] = '\0';
+    line[index] = '\0'; // adding the null character to end the string properly
     return line;
 }
 
+// reads a file line by line using the readLineCharbyChar function
+// returns pointer to the start of the linked list 
 LINK *readFile(FILE *file, LINK *pStart)
 {
     LINK *addLink(LINK * pStart, char *line);
@@ -92,6 +108,8 @@ LINK *readFile(FILE *file, LINK *pStart)
     return pStart;
 }
 
+// adds a link to the linked list containing the file's line values
+// returns pointer to the start of the linked list
 LINK *addLink(LINK *pStart, char *line)
 {
     LINK *getLastLink(LINK * pStart);
@@ -116,6 +134,9 @@ LINK *addLink(LINK *pStart, char *line)
     return pOriginalStart;
 }
 
+// writes to the given output FILE be it stdout or a regular file
+// can print regularly or reversed
+// returns void
 void writeToOutput(FILE *output, LINK *start, int reversed)
 {
     LINK *getLastLink(LINK * pStart);
@@ -134,13 +155,16 @@ void writeToOutput(FILE *output, LINK *start, int reversed)
     {
         while (start != NULL)
         {
-            fprintf(output, "LINK: %.30s\n", start->line);
+            fprintf(output, "%s\n", start->line);
             pBuffer = start->pNext;
             start = pBuffer;
         }
     }
+    return;
 }
 
+// traverses through the linked list and returns the last link of the linked list
+// returns pointer to the linked list's last link can return NULL if pstart is NULL
 LINK *getLastLink(LINK *pStart)
 {
     while (pStart != NULL && pStart->pNext != NULL)
@@ -150,6 +174,8 @@ LINK *getLastLink(LINK *pStart)
     return pStart;
 }
 
+// traverses through the linked list and frees all memory allocated to the links
+// returns void
 void freeList(LINK *pStart)
 {
     LINK *pBuffer = NULL;
@@ -162,24 +188,26 @@ void freeList(LINK *pStart)
     }
 }
 
+// main function
 int main(int argc, char const *argv[])
 {
     FILE *inputFile;
     FILE *outputFile = stdout;
     LINK *pStart = NULL;
 
+    // switch-case for different command line arguments
     switch (argc)
     {
-    case 1:
+    case 1: // input from stdin and output to stdout
         inputFile = stdin;
         pStart = readFile(inputFile, pStart);
         break;
-    case 2:
+    case 2: // input from file and output to stdout
         inputFile = fopen(argv[1], "r");
         checkFile(inputFile, (char *)argv[1]);
         pStart = readFile(inputFile, pStart);
         break;
-    case 3:
+    case 3: // input from file and output to file
         inputFile = fopen(argv[1], "r");
         outputFile = fopen(argv[2], "w");
         checkFile(inputFile, (char *)argv[1]);
@@ -192,7 +220,7 @@ int main(int argc, char const *argv[])
         exit(1);
         break;
     }
-    writeToOutput(outputFile, pStart, 1);
+    writeToOutput(outputFile, pStart, 1); //hardcoded to make the output reversed
     freeList(pStart);
     fclose(inputFile);
     fclose(outputFile);
