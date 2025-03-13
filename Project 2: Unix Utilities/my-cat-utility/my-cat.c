@@ -42,7 +42,7 @@ char *readLineCharbyChar(FILE *file)
             free(line);
             return NULL;
         }
-        line = realloc(line, (strlen(line) + 1));
+        line = realloc(line, (strlen(line) + sizeof(c)));
         checkMallocChar(line);
         line[index++] = (char)c;
     }
