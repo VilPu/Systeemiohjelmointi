@@ -82,12 +82,36 @@ void saveToken(char *tokens[1024], char *token, int *row)
     *row = *row + 1;
 }
 
+void saveTokenWithSpecials(char *tokens[1024], char *token, char *specialCharPtr, int *row, char specialChar[2])
+{
+
+    if (&token[0] - 1 == specialCharPtr) // token starts with special
+    {
+        saveToken(tokens, specialChar, row);
+        saveToken(tokens, token, row);
+    }
+    else
+    {
+        saveToken(tokens, token, row);
+        saveToken(tokens, specialChar, row);
+    }
+}
+
+void findNextSpecial(char **ptrSpecial, char specialChar)
+{
+    if (*ptrSpecial != NULL)
+    {
+        *ptrSpecial = strchr(*ptrSpecial + 1, specialChar);
+    }
+}
+
 int parseToken(char *tokens[1024], char *token, int row)
 {
     char *ptrAmpersand;
     char *ptrRedirect;
     char *newToken;
-    char *tokenCopy = malloc(strlen(token) + 2);
+
+    char *tokenCopy = malloc(strlen(token) + 2); // copy to avoid changes to original
     if (tokenCopy == NULL)
     {
         raiseError();
@@ -99,7 +123,7 @@ int parseToken(char *tokens[1024], char *token, int row)
         free(tokenCopy);
         return row;
     }
-
+    // find specials
     ptrAmpersand = strchr(tokenCopy, '&');
     ptrRedirect = strchr(tokenCopy, '>');
 
@@ -121,16 +145,23 @@ int parseToken(char *tokens[1024], char *token, int row)
     {
         if (ptrAmpersand != NULL && ptrRedirect == NULL) // only ampersand is found
         {
-            if (&newToken[0] - 1 == ptrAmpersand) // compare memory address for position
-            {
-                saveToken(tokens, "&", &row);
-                saveToken(tokens, newToken, &row);
-            }
-            else
-            {
-                saveToken(tokens, newToken, &row);
-                saveToken(tokens, "&", &row);
-            }
+            saveTokenWithSpecials(tokens, newToken, ptrAmpersand, &row, "&");
+            findNextSpecial(&ptrAmpersand, '&');
+        }
+        else if (ptrRedirect != NULL && ptrAmpersand == NULL) // only redirect is found
+        {
+            saveTokenWithSpecials(tokens, newToken, ptrRedirect, &row, ">");
+            findNextSpecial(&ptrRedirect, '>');
+        }
+        else if (ptrAmpersand != NULL && ptrRedirect != NULL && ptrAmpersand < ptrRedirect) // both found but ampersand is first
+        {
+            saveTokenWithSpecials(tokens, newToken, ptrAmpersand, &row, "&");
+            findNextSpecial(&ptrAmpersand, '&');
+        }
+        else if (ptrAmpersand != NULL && ptrRedirect != NULL && ptrRedirect < ptrAmpersand) // both found but redirect is first
+        {
+            saveTokenWithSpecials(tokens, newToken, ptrRedirect, &row, ">");
+            findNextSpecial(&ptrRedirect, '>');
         }
         else
         {
@@ -138,11 +169,6 @@ int parseToken(char *tokens[1024], char *token, int row)
         }
 
         newToken = strtok(NULL, "&>");
-        if (newToken != NULL) // if there is more commands without spaces -> find special chars
-        {
-            ptrAmpersand = strchr(newToken, '&');
-            ptrRedirect = strchr(newToken, '>');
-        }
     }
 
     free(tokenCopy);
