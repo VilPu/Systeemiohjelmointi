@@ -93,50 +93,52 @@ int parseToken(char *tokens[1024], char *token, int row)
         raiseError();
     }
     strcpy(tokenCopy, token);
-    
+
     if (row == 1024)
     {
         free(tokenCopy);
         return row;
     }
-    
+
     ptrAmpersand = strchr(tokenCopy, '&');
     ptrRedirect = strchr(tokenCopy, '>');
 
-    if (ptrAmpersand == NULL && ptrRedirect == NULL)
+    if (ptrAmpersand == NULL && ptrRedirect == NULL) // no special chars found
     {
         saveToken(tokens, tokenCopy, &row);
         free(tokenCopy);
         return row;
     }
-    if (strcmp(tokenCopy, "&") == 0 || strcmp(tokenCopy, ">") == 0)
+    if (strcmp(tokenCopy, "&") == 0 || strcmp(tokenCopy, ">") == 0) // if the token is a special char
     {
         saveToken(tokens, tokenCopy, &row);
         free(tokenCopy);
         return row;
     }
-    
+
     newToken = strtok(tokenCopy, "&>");
     while (newToken != NULL)
     {
         if (ptrAmpersand != NULL && ptrRedirect == NULL) // only ampersand is found
         {
-            if (&newToken[0] - 1 == ptrAmpersand) // compare memory address
+            if (&newToken[0] - 1 == ptrAmpersand) // compare memory address for position
             {
                 saveToken(tokens, "&", &row);
                 saveToken(tokens, newToken, &row);
-            } else
+            }
+            else
             {
-                saveToken(tokens, newToken, &row);                
+                saveToken(tokens, newToken, &row);
                 saveToken(tokens, "&", &row);
             }
-        } else
+        }
+        else
         {
             saveToken(tokens, newToken, &row);
         }
 
         newToken = strtok(NULL, "&>");
-        if (newToken != NULL)
+        if (newToken != NULL) // if there is more commands without spaces -> find special chars
         {
             ptrAmpersand = strchr(newToken, '&');
             ptrRedirect = strchr(newToken, '>');
@@ -165,7 +167,6 @@ int tokenize(char *line, char *tokens[1024])
         row = parseToken(tokens, token, row);
 
         token = strtok_r(NULL, delim, &statePtr);
-
     }
     return row;
 }
