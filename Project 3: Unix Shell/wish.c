@@ -119,7 +119,6 @@ int parseToken(char *tokens[1024], char *token, int row)
     newToken = strtok(tokenCopy, "&>");
     while (newToken != NULL)
     {
-        printf("newToken: %s\n", newToken);
         if (ptrAmpersand != NULL && ptrRedirect == NULL) // only ampersand is found
         {
             if (&newToken[0] - 1 == ptrAmpersand) // compare memory address
@@ -130,12 +129,9 @@ int parseToken(char *tokens[1024], char *token, int row)
             {
                 saveToken(tokens, newToken, &row);                
                 saveToken(tokens, "&", &row);
-                
-                printf("token: %s\n", token);
             }
         } else
         {
-            //printf("else\n");
             saveToken(tokens, newToken, &row);
         }
 
@@ -144,7 +140,6 @@ int parseToken(char *tokens[1024], char *token, int row)
         {
             ptrAmpersand = strchr(newToken, '&');
             ptrRedirect = strchr(newToken, '>');
-            printf("newToken: %s, ptrAmp: %p, ptrRed: %p\n", newToken, ptrAmpersand, ptrRedirect);
         }
     }
 
@@ -163,16 +158,13 @@ int tokenize(char *line, char *tokens[1024])
 
     while (token != NULL)
     {
-        printf("Parsing token: %s\n", token);
         if (row == 1024) // avoid index out of bounds error
         {
             break;
         }
         row = parseToken(tokens, token, row);
-        printf("\nToken after: %s\n\n", token);
 
         token = strtok_r(NULL, delim, &statePtr);
-        printf("\nSTRTOK: %s\n\n", token);
 
     }
     return row;
@@ -188,13 +180,10 @@ void freePathVariables()
 
 void freeArgs(char *args[], int index, int start)
 {
-    // printf("argc: %d | index: %d | start: %d\n", index-start, index, start);
-    for (int i = 0; i < index - start; i++) // free args TODO change i to 0
+    for (int i = 0; i < index - start; i++)
     {
-        // printf("Freeing arg[%d]: %s\n", i, args[i]);
         free(args[i]);
     }
-    // printf("should be null: %s\n", args[index-start]);
 }
 
 void allocateArgs(char *args[], char *tokens[], int index, int start)
@@ -243,7 +232,6 @@ void runBinary(char *args[], int start, int index)
         strcat(bin, PATH_VARIABLES[i]);
         strcat(bin, "/");
         strcat(bin, args[0]);
-        // printf("Running bin: %s and args[0]: %s\n", bin, args[0]);
         if (access(bin, X_OK) != -1)
         {
             pid_t id = fork();
