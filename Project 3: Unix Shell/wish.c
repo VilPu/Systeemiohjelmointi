@@ -217,11 +217,11 @@ void allocateArgs(char *args[], char *tokens[], int index, int start)
 {
     for (int i = 0; i < index - start; i++)
     {
-        if ((args[i] = malloc(strlen(tokens[start + i]))) == NULL)
+        if ((args[i] = malloc(strlen(tokens[start]))) == NULL)
         {
             raiseError();
         }
-        strcpy(args[i], tokens[i]);
+        strcpy(args[i], tokens[i + start]);
     }
 }
 
