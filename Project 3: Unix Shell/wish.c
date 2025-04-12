@@ -10,14 +10,7 @@ enum BuiltIn
     PATH = 2
 };
 
-enum Delimiter
-{
-    REDIRECTION = 0,
-    AMPERSAND = 1
-};
-
 const char *BUILT_INS[] = {"exit", "cd", "path"};
-const char *DELIMETERS[] = {">", "&"};
 
 const char ERROR_MESSAGE[30] = "An error has occurred\n";
 
@@ -52,7 +45,6 @@ void biExit()
 
 void biCd(int argc, char *path)
 {
-    printf("CD executed\n");
     if (argc != 2)
     {
         printError();
@@ -60,7 +52,6 @@ void biCd(int argc, char *path)
     }
     if (chdir(path) == -1)
     {
-        printf("miinusykköstä\n");
         printError();
     }
 }
@@ -79,28 +70,110 @@ void clearTokens(char *tokens[1024], int range)
     }
 }
 
+void saveToken(char *tokens[1024], char *token, int *row)
+{
+    tokens[*row] = malloc(strlen(token));
+    if (tokens[*row] == NULL)
+    {
+        raiseError();
+    }
+    strcpy(tokens[*row], token);
+    printf("saveToken: %d %s\n", *row, tokens[*row]);
+    *row = *row + 1;
+}
+
+int parseToken(char *tokens[1024], char *token, int row)
+{
+    char *ptrAmpersand;
+    char *ptrRedirect;
+    char *newToken;
+    char *tokenCopy = malloc(strlen(token) + 2);
+    if (tokenCopy == NULL)
+    {
+        raiseError();
+    }
+    strcpy(tokenCopy, token);
+    
+    if (row == 1024)
+    {
+        free(tokenCopy);
+        return row;
+    }
+    
+    ptrAmpersand = strchr(tokenCopy, '&');
+    ptrRedirect = strchr(tokenCopy, '>');
+
+    if (ptrAmpersand == NULL && ptrRedirect == NULL)
+    {
+        saveToken(tokens, tokenCopy, &row);
+        free(tokenCopy);
+        return row;
+    }
+    if (strcmp(tokenCopy, "&") == 0 || strcmp(tokenCopy, ">") == 0)
+    {
+        saveToken(tokens, tokenCopy, &row);
+        free(tokenCopy);
+        return row;
+    }
+    
+    newToken = strtok(tokenCopy, "&>");
+    while (newToken != NULL)
+    {
+        printf("newToken: %s\n", newToken);
+        if (ptrAmpersand != NULL && ptrRedirect == NULL) // only ampersand is found
+        {
+            if (&newToken[0] - 1 == ptrAmpersand) // compare memory address
+            {
+                saveToken(tokens, "&", &row);
+                saveToken(tokens, newToken, &row);
+            } else
+            {
+                saveToken(tokens, newToken, &row);                
+                saveToken(tokens, "&", &row);
+                
+                printf("token: %s\n", token);
+            }
+        } else
+        {
+            //printf("else\n");
+            saveToken(tokens, newToken, &row);
+        }
+
+        newToken = strtok(NULL, "&>");
+        if (newToken != NULL)
+        {
+            ptrAmpersand = strchr(newToken, '&');
+            ptrRedirect = strchr(newToken, '>');
+            printf("newToken: %s, ptrAmp: %p, ptrRed: %p\n", newToken, ptrAmpersand, ptrRedirect);
+        }
+    }
+
+    free(tokenCopy);
+    return row;
+}
+
 int tokenize(char *line, char *tokens[1024])
 {
     const char delim[5] = " \t\n"; // tabs, whitespaces and newlines
-    const char *token;
+    char *token;
+    char *statePtr;
     int row = 0;
 
-    token = strtok(line, delim);
+    token = strtok_r(line, delim, &statePtr);
 
     while (token != NULL)
     {
+        printf("Parsing token: %s\n", token);
         if (row == 1024) // avoid index out of bounds error
         {
             break;
         }
-        tokens[row] = malloc(strlen(token) + 1);
-        if (tokens[row] == NULL)
-        {
-            raiseError();
-        }
-        strcpy(tokens[row], token);
-        row++;
-        token = strtok(NULL, delim);
+        row = parseToken(tokens, token, row);
+        printf("\nToken after: %s\n\n", token);
+
+        token = strtok_r(NULL, delim, &statePtr);
+        printf("\nSTRTOK: %s\n\n", token);
+
     }
     return row;
 }
@@ -111,15 +184,14 @@ void freePathVariables()
     {
         free(PATH_VARIABLES[i]);
     }
-    
 }
 
 void freeArgs(char *args[], int index, int start)
 {
-    //printf("argc: %d | index: %d | start: %d\n", index-start, index, start);
+    // printf("argc: %d | index: %d | start: %d\n", index-start, index, start);
     for (int i = 0; i < index - start; i++) // free args TODO change i to 0
     {
-        printf("Freeing arg[%d]: %s\n", i, args[i]);
+        // printf("Freeing arg[%d]: %s\n", i, args[i]);
         free(args[i]);
     }
     // printf("should be null: %s\n", args[index-start]);
@@ -139,7 +211,6 @@ void allocateArgs(char *args[], char *tokens[], int index, int start)
 
 void biPath(char *args[], int argc)
 {
-    printf("path was executed\n");
     int varCount = 0;
     freePathVariables();
 
@@ -172,7 +243,7 @@ void runBinary(char *args[], int start, int index)
         strcat(bin, PATH_VARIABLES[i]);
         strcat(bin, "/");
         strcat(bin, args[0]);
-        printf("Running bin: %s and args[0]: %s\n", bin, args[0]);
+        // printf("Running bin: %s and args[0]: %s\n", bin, args[0]);
         if (access(bin, X_OK) != -1)
         {
             pid_t id = fork();
@@ -180,10 +251,12 @@ void runBinary(char *args[], int start, int index)
             {
                 execv(bin, args);
                 raiseError(); // if got here execv encountered error
-            } else {
+            }
+            else
+            {
                 wait(0);
             }
-            free(bin);  // free bin if accessible
+            free(bin); // free bin if accessible
             return;
         }
         free(bin); // free bin after every iteration
@@ -196,9 +269,8 @@ int runCommand(char *tokens[1024], int start, int end, int builtIn)
 {
     int index = start;
     char *token = tokens[index];
-    while (strcmp(token, DELIMETERS[AMPERSAND]) != 0 && strcmp(token, DELIMETERS[REDIRECTION]) != 0 && index < end)
+    while (strcmp(token, "&") != 0 && strcmp(token, ">") != 0 && index < end)
     {
-        printf("processing token: %s\n", token);
         index++;
         token = tokens[index];
     }
@@ -283,8 +355,8 @@ void runShell(FILE *input)
 
 int main(int argc, char const *argv[])
 {
-    
-    if( (PATH_VARIABLES[0] = malloc(sizeof(char) * 6)) == NULL) 
+
+    if ((PATH_VARIABLES[0] = malloc(sizeof(char) * 6)) == NULL)
     {
         raiseError();
     }
