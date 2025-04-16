@@ -17,6 +17,8 @@ const char ERROR_MESSAGE[30] = "An error has occurred\n";
 char *PATH_VARIABLES[1024];
 int NPATH_VARIABLES = 0;
 
+int errorState = 0;
+
 void raiseError()
 {
     fwrite(&ERROR_MESSAGE, strlen(ERROR_MESSAGE), 1, stderr);
@@ -36,11 +38,6 @@ void checkFile(FILE *file)
         exit(1);
     }
     return;
-}
-
-void biExit()
-{
-    exit(0);
 }
 
 void biCd(int argc, char *path)
@@ -84,16 +81,19 @@ void saveToken(char *tokens[1024], char *token, int *row)
 
 void saveTokenWithSpecials(char *tokens[1024], char *token, char *specialCharPtr, int *row, char specialChar[2])
 {
-
-    if (&token[0] - 1 == specialCharPtr) // token starts with special
+    if (&token[0] - 1 == specialCharPtr && *row != 0) // token starts with special excl. first token
     {
         saveToken(tokens, specialChar, row);
         saveToken(tokens, token, row);
     }
-    else
+    else if (&token[0] - 1 != specialCharPtr)
     {
         saveToken(tokens, token, row);
         saveToken(tokens, specialChar, row);
+    }
+    else
+    {
+        saveToken(tokens, token, row);
     }
 }
 
@@ -101,8 +101,39 @@ void findNextSpecial(char **ptrSpecial, char specialChar)
 {
     if (*ptrSpecial != NULL)
     {
+/*        while (*(*ptrSpecial + 1) == '&' || *(*ptrSpecial + 1) == '>')
+        {
+            *ptrSpecial = *ptrSpecial + 1;
+        }*/
         *ptrSpecial = strchr(*ptrSpecial + 1, specialChar);
+
+        //printf("\nnext amp: %s\n", *ptrSpecial);
     }
+}
+
+void checkSpecialFormat(char *token)
+{
+    if (token == NULL)
+    {
+        return;
+    }
+    if (strlen(token) <= 1)
+    {
+        return;
+    }
+    for (int i = 0; token[i + 1] != '\0'; i++)
+    {
+        if (token[i] != token[i + 1]) // not the same, continue
+        {
+            continue;
+        }
+        if (token[i] == '&' || token[i] == '>') // check for &, >
+        {
+            errorState = 1;
+            break;
+        }
+    }
+    return;
 }
 
 int parseToken(char *tokens[1024], char *token, int row)
@@ -127,11 +158,22 @@ int parseToken(char *tokens[1024], char *token, int row)
     ptrAmpersand = strchr(tokenCopy, '&');
     ptrRedirect = strchr(tokenCopy, '>');
 
-    if (ptrAmpersand == NULL && ptrRedirect == NULL) // no special chars found
+    checkSpecialFormat(tokenCopy);
+    if (errorState == 1)
     {
-        saveToken(tokens, tokenCopy, &row);
+        printError();
         free(tokenCopy);
         return row;
+    }
+    if (&tokenCopy[0] == ptrAmpersand && row == 0)
+    {
+        printf("CASETHIS\n");
+        findNextSpecial(&ptrAmpersand, '&');
+    }
+    if (&tokenCopy[0] == ptrRedirect && row == 0)
+    {
+        printf("CASETHIS\n");
+        findNextSpecial(&ptrAmpersand, '>');
     }
     if (strcmp(tokenCopy, "&") == 0 || strcmp(tokenCopy, ">") == 0) // if the token is a special char
     {
@@ -191,7 +233,11 @@ int tokenize(char *line, char *tokens[1024])
             break;
         }
         row = parseToken(tokens, token, row);
-
+        if (errorState == 1)
+        {
+            return row;
+        }
+        
         token = strtok_r(NULL, delim, &statePtr);
     }
     return row;
@@ -230,7 +276,7 @@ void biPath(char *args[], int argc)
     int varCount = 0;
     freePathVariables();
 
-    for (int i = 1; i < argc; i++)
+    for (int i = 1; i < argc; i++) // starts at 1 so 'path' is not included
     {
         int varIdx = i - 1;
         if ((PATH_VARIABLES[varIdx] = malloc(strlen(args[i]))) == NULL)
@@ -251,7 +297,7 @@ void runBinary(char *args[], int start, int index)
 {
     for (int i = 0; i < NPATH_VARIABLES; i++)
     {
-        char *bin = malloc(strlen(PATH_VARIABLES[i]) + strlen(args[0]) + 1);
+        char *bin = malloc(strlen(PATH_VARIABLES[i]) + strlen(args[0]) + 2);
         if (bin == NULL)
         {
             break;
@@ -284,6 +330,12 @@ int runCommand(char *tokens[1024], int start, int end, int builtIn)
 {
     int index = start;
     char *token = tokens[index];
+
+    if (strcmp(token, "&") == 0 || strcmp(token, ">") == 0)
+    {
+        return index + 1;
+    }
+
     while (strcmp(token, "&") != 0 && strcmp(token, ">") != 0 && index < end)
     {
         index++;
@@ -319,7 +371,7 @@ void executeCommands(char *tokens[1024], int ntokens)
         if (strcmp(token, BUILT_INS[EXIT]) == 0)
         {
             clearTokens(tokens, ntokens);
-            biExit();
+            exit(0);
         }
         else if (strcmp(token, BUILT_INS[CD]) == 0)
         {
@@ -362,9 +414,13 @@ void runShell(FILE *input)
         ntokens = tokenize(line, tokens);
         free(line);
         line = NULL;
-        executeCommands(tokens, ntokens);
+        if (errorState == 0)
+        {
+            executeCommands(tokens, ntokens);
+        }
         clearTokens(tokens, ntokens);
         ntokens = 0;
+        errorState = 0;
     }
 }
 
