@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <fcntl.h>
 
 enum BuiltIn
 {
@@ -17,7 +18,7 @@ const char ERROR_MESSAGE[30] = "An error has occurred\n";
 char *PATH_VARIABLES[1024];
 int NPATH_VARIABLES = 0;
 
-int errorState = 0;
+int ERROR_STATE = 0;
 
 void raiseError()
 {
@@ -53,8 +54,21 @@ void biCd(int argc, char *path)
     }
 }
 
-void checkPath()
+int isRedirect(char *tokens[1024], int index, int end)
 {
+    if (index + 1 > end)
+    {
+        return 1;
+    }
+    if (strcmp(tokens[index], ">") != 0)
+    {
+        return 1;
+    }
+    if (tokens[index + 1] != NULL)
+    {
+        return 0;
+    }
+    return 1;
 }
 
 void clearTokens(char *tokens[1024], int range)
@@ -123,7 +137,7 @@ void checkConsecutiveSpecials(char *token)
         }
         if (token[i] == '&' || token[i] == '>') // check for &, >
         {
-            errorState = 1;
+            ERROR_STATE = 1;
             break;
         }
     }
@@ -153,7 +167,7 @@ int parseToken(char *tokens[1024], char *token, int row)
     ptrRedirect = strchr(tokenCopy, '>');
 
     checkConsecutiveSpecials(tokenCopy);
-    if (errorState == 1)
+    if (ERROR_STATE == 1)
     {
         printError();
         free(tokenCopy);
@@ -165,7 +179,7 @@ int parseToken(char *tokens[1024], char *token, int row)
     }
     if (&tokenCopy[0] == ptrRedirect && row == 0) // leads to error, no trailing command
     {
-        errorState = 1;
+        ERROR_STATE = 1;
         printError();
         free(tokenCopy);
         return row;
@@ -176,12 +190,12 @@ int parseToken(char *tokens[1024], char *token, int row)
         free(tokenCopy);
         return row;
     }
-    if (ptrAmpersand + 1 == ptrRedirect || ptrRedirect + 1 == ptrAmpersand) // specials are next to each other -> redirect fails 
+    if (ptrAmpersand + 1 == ptrRedirect || ptrRedirect + 1 == ptrAmpersand) // specials are next to each other -> redirect fails
     {
-        errorState = 1;
+        ERROR_STATE = 1;
         printError();
         free(tokenCopy);
-        return row;        
+        return row;
     }
 
     newToken = strtok(tokenCopy, "&>");
@@ -234,11 +248,10 @@ int tokenize(char *line, char *tokens[1024])
             break;
         }
         row = parseToken(tokens, token, row);
-        if (errorState == 1)
+        if (ERROR_STATE == 1)
         {
             return row;
         }
-        
         token = strtok_r(NULL, delim, &statePtr);
     }
     return row;
@@ -294,8 +307,20 @@ void biPath(char *args[], int argc)
     NPATH_VARIABLES = varCount;
 }
 
-void runBinary(char *args[], int start, int index)
+void runBinary(char *args[], int start, int index, char *outputFile)
 {
+    int fileRedirect = -1;
+
+    if (outputFile != NULL)
+    {
+        if ((fileRedirect = open(outputFile, O_WRONLY | O_TRUNC | O_CREAT, S_IWUSR)) == -1)
+        {
+            ERROR_STATE = 1;
+            printError();
+            return;
+        }
+    }
+
     for (int i = 0; i < NPATH_VARIABLES; i++)
     {
         char *bin = malloc(strlen(PATH_VARIABLES[i]) + strlen(args[0]) + 2);
@@ -311,17 +336,29 @@ void runBinary(char *args[], int start, int index)
             pid_t id = fork();
             if (id == 0)
             {
+                if (outputFile != NULL) // if redirect -> change stdout and stderr of the process to file
+                {
+                    int out = dup2(fileRedirect, fileno(stdout));
+                    int err = dup2(fileRedirect, fileno(stderr));
+                    if (out == -1 || err == -1) // redirect failed, exit(1)
+                    {
+                        close(fileRedirect);
+                        exit(1);
+                    }
+                }
+                close(fileRedirect);
                 execv(bin, args);
                 raiseError(); // if got here execv encountered error
             }
             else
             {
                 wait(0);
+                close(fileRedirect);
             }
             free(bin); // free bin if X_OK
             return;
         }
-        free(bin); // free bin after every iteration
+        free(bin); // free bin after every non X_OK iteration
     }
     printError();
     return;
@@ -356,7 +393,16 @@ int runCommand(char *tokens[1024], int start, int end, int builtIn)
         biPath(args, argc);
         break;
     default:
-        runBinary(args, start, index);
+        if (isRedirect(tokens, index, end) == 0)
+        {
+            runBinary(args, start, index, tokens[index + 1]);
+            freeArgs(args, index, start);
+            return index + 2;
+        }
+        else
+        {
+            runBinary(args, start, index, NULL);
+        }
         break;
     }
     freeArgs(args, index, start);
@@ -367,6 +413,10 @@ void executeCommands(char *tokens[1024], int ntokens)
 {
     for (size_t i = 0; i < ntokens; i++)
     {
+        if (ERROR_STATE == 1)
+        {
+            break;
+        }
         char *token = tokens[i];
 
         if (strcmp(token, BUILT_INS[EXIT]) == 0)
@@ -400,24 +450,23 @@ void checkRedirection(char *tokens[1024], int ntokens)
         if (i == 0 || i == ntokens || i + 1 > ntokens || strcmp(tokens[i - 1], "&") == 0)
         {
             printError();
-            errorState = 1;
+            ERROR_STATE = 1;
             break;
         }
         if (i + 1 == ntokens || strcmp(tokens[i + 1], "&") == 0)
         {
             printError();
-            errorState = 1;
-            break;            
+            ERROR_STATE = 1;
+            break;
         }
         if (i + 2 == ntokens || ((i + 2 <= ntokens) && strcmp(tokens[i + 2], "&") == 0))
         {
             continue;
         }
         printError(); // defaults to error
-        errorState = 1;
-        break;                
+        ERROR_STATE = 1;
+        break;
     }
-    
 }
 
 void runShell(FILE *input)
@@ -447,13 +496,13 @@ void runShell(FILE *input)
         checkRedirection(tokens, ntokens);
         free(line);
         line = NULL;
-        if (errorState == 0)
+        if (ERROR_STATE == 0)
         {
             executeCommands(tokens, ntokens);
         }
         clearTokens(tokens, ntokens);
         ntokens = 0;
-        errorState = 0;
+        ERROR_STATE = 0;
     }
 }
 
