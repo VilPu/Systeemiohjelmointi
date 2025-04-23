@@ -54,9 +54,9 @@ void biCd(int argc, char *path)
     }
 }
 
-int isRedirect(char *tokens[1024], int index, int end)
+int isRedirect(char *tokens[1024], int index, int ntokens)
 {
-    if (index + 1 > end)
+    if (index + 1 > ntokens)
     {
         return 1;
     }
@@ -89,7 +89,6 @@ void saveToken(char *tokens[1024], char *token, int *row)
         raiseError();
     }
     strcpy(tokens[*row], token);
-    printf("saveToken: %d %s\n", *row, tokens[*row]);
     *row = *row + 1;
 }
 
@@ -307,17 +306,17 @@ void biPath(char *args[], int argc)
     NPATH_VARIABLES = varCount;
 }
 
-void runBinary(char *args[], int start, int index, char *outputFile)
+pid_t runBinary(char *args[], int start, int index, char *outputFile)
 {
     int fileRedirect = -1;
 
     if (outputFile != NULL)
     {
-        if ((fileRedirect = open(outputFile, O_WRONLY | O_TRUNC | O_CREAT, S_IWUSR)) == -1)
+        if ((fileRedirect = open(outputFile, O_WRONLY | O_TRUNC | O_CREAT, S_IWUSR | S_IRUSR)) == -1)
         {
             ERROR_STATE = 1;
             printError();
-            return;
+            return 0;
         }
     }
 
@@ -340,78 +339,95 @@ void runBinary(char *args[], int start, int index, char *outputFile)
                 {
                     int out = dup2(fileRedirect, fileno(stdout));
                     int err = dup2(fileRedirect, fileno(stderr));
+                    close(fileRedirect);
                     if (out == -1 || err == -1) // redirect failed, exit(1)
                     {
-                        close(fileRedirect);
                         exit(1);
                     }
                 }
-                close(fileRedirect);
                 execv(bin, args);
                 raiseError(); // if got here execv encountered error
             }
-            else
-            {
-                wait(0);
-                close(fileRedirect);
-            }
+            close(fileRedirect);
             free(bin); // free bin if X_OK
-            return;
+            return id; // return child process id
         }
         free(bin); // free bin after every non X_OK iteration
     }
     printError();
-    return;
+    return 0; // no processes started -> return 0
 }
 
-int runCommand(char *tokens[1024], int start, int end, int builtIn)
+int runCommand(char *tokens[1024], int *start, int ntokens, int builtIn)
 {
-    int index = start;
+    int index = *start;
     char *token = tokens[index];
+    pid_t processId = 0;
 
     if (strcmp(token, "&") == 0 || strcmp(token, ">") == 0)
     {
-        return index + 1;
+        *start = index + 1;
+        return 0;
     }
 
-    while (strcmp(token, "&") != 0 && strcmp(token, ">") != 0 && index < end)
+    while (strcmp(token, "&") != 0 && strcmp(token, ">") != 0 && index < ntokens)
     {
         index++;
         token = tokens[index];
     }
-    int argc = index - start;
+    int argc = index - *start;
     char *args[argc];
-    allocateArgs(args, tokens, index, start);
+    allocateArgs(args, tokens, index, *start);
     args[argc] = NULL; // NULL in the end for execv
 
     switch (builtIn)
     {
+    case EXIT:
+        if ((index - *start) != 1)
+        {
+            printError();
+        }
+        else
+        {
+            clearTokens(tokens, ntokens);
+            exit(0);
+        }
+        break;
     case CD:
-        biCd(index - start, args[1]);
+        biCd(index - *start, args[1]);
         break;
     case PATH:
         biPath(args, argc);
         break;
     default:
-        if (isRedirect(tokens, index, end) == 0)
+        if (isRedirect(tokens, index, ntokens) == 0)
         {
-            runBinary(args, start, index, tokens[index + 1]);
-            freeArgs(args, index, start);
-            return index + 2;
+            processId = runBinary(args, *start, index, tokens[index + 1]);
+            freeArgs(args, index, *start);
+            *start = index + 2;
+            return processId;
         }
         else
         {
-            runBinary(args, start, index, NULL);
+            processId = runBinary(args, *start, index, NULL);
+            freeArgs(args, index, *start);
+            *start = index;
+            return processId;
         }
         break;
     }
-    freeArgs(args, index, start);
-    return index;
+    freeArgs(args, index, *start);
+    *start = index;
+    return 0;
 }
 
 void executeCommands(char *tokens[1024], int ntokens)
 {
-    for (size_t i = 0; i < ntokens; i++)
+    pid_t processes[1024];
+    pid_t processId = 0;
+    int nprocess = 0;
+
+    for (int i = 0; i < ntokens; i++)
     {
         if (ERROR_STATE == 1)
         {
@@ -421,21 +437,28 @@ void executeCommands(char *tokens[1024], int ntokens)
 
         if (strcmp(token, BUILT_INS[EXIT]) == 0)
         {
-            clearTokens(tokens, ntokens);
-            exit(0);
+            runCommand(tokens, &i, ntokens, EXIT);
         }
         else if (strcmp(token, BUILT_INS[CD]) == 0)
         {
-            i = runCommand(tokens, i, ntokens, CD);
+            runCommand(tokens, &i, ntokens, CD);
         }
         else if (strcmp(token, BUILT_INS[PATH]) == 0)
         {
-            i = runCommand(tokens, i, ntokens, PATH);
+            runCommand(tokens, &i, ntokens, PATH);
         }
         else
         {
-            i = runCommand(tokens, i, ntokens, -1);
+            processId = runCommand(tokens, &i, ntokens, -1);
+            if (processId > 0 && ERROR_STATE == 0)
+            {
+                processes[nprocess++] = processId;
+            }
         }
+    }
+    for (int i = 0; i < nprocess; i++) // wait for child processes
+    {
+        waitpid(processes[i], NULL, 0);
     }
 }
 
@@ -508,6 +531,7 @@ void runShell(FILE *input)
 
 int main(int argc, char const *argv[])
 {
+    FILE *file;
 
     if ((PATH_VARIABLES[0] = malloc(sizeof(char) * 6)) == NULL)
     {
@@ -522,7 +546,13 @@ int main(int argc, char const *argv[])
         runShell(stdin);
         break;
     case 2:
-
+        file = fopen(argv[1], "r");
+        if (file == NULL)
+        {
+            raiseError();
+        }
+        runShell(file);
+        fclose(file);
         break;
 
     default:
