@@ -101,17 +101,11 @@ void findNextSpecial(char **ptrSpecial, char specialChar)
 {
     if (*ptrSpecial != NULL)
     {
-/*        while (*(*ptrSpecial + 1) == '&' || *(*ptrSpecial + 1) == '>')
-        {
-            *ptrSpecial = *ptrSpecial + 1;
-        }*/
         *ptrSpecial = strchr(*ptrSpecial + 1, specialChar);
-
-        //printf("\nnext amp: %s\n", *ptrSpecial);
     }
 }
 
-void checkSpecialFormat(char *token)
+void checkConsecutiveSpecials(char *token)
 {
     if (token == NULL)
     {
@@ -158,7 +152,7 @@ int parseToken(char *tokens[1024], char *token, int row)
     ptrAmpersand = strchr(tokenCopy, '&');
     ptrRedirect = strchr(tokenCopy, '>');
 
-    checkSpecialFormat(tokenCopy);
+    checkConsecutiveSpecials(tokenCopy);
     if (errorState == 1)
     {
         printError();
@@ -167,19 +161,27 @@ int parseToken(char *tokens[1024], char *token, int row)
     }
     if (&tokenCopy[0] == ptrAmpersand && row == 0)
     {
-        printf("CASETHIS\n");
         findNextSpecial(&ptrAmpersand, '&');
     }
-    if (&tokenCopy[0] == ptrRedirect && row == 0)
+    if (&tokenCopy[0] == ptrRedirect && row == 0) // leads to error, no trailing command
     {
-        printf("CASETHIS\n");
-        findNextSpecial(&ptrAmpersand, '>');
+        errorState = 1;
+        printError();
+        free(tokenCopy);
+        return row;
     }
     if (strcmp(tokenCopy, "&") == 0 || strcmp(tokenCopy, ">") == 0) // if the token is a special char
     {
         saveToken(tokens, tokenCopy, &row);
         free(tokenCopy);
         return row;
+    }
+    if (ptrAmpersand + 1 == ptrRedirect || ptrRedirect + 1 == ptrAmpersand) // specials are next to each other -> redirect fails 
+    {
+        errorState = 1;
+        printError();
+        free(tokenCopy);
+        return row;        
     }
 
     newToken = strtok(tokenCopy, "&>");
@@ -209,7 +211,6 @@ int parseToken(char *tokens[1024], char *token, int row)
         {
             saveToken(tokens, newToken, &row);
         }
-
         newToken = strtok(NULL, "&>");
     }
 
@@ -317,7 +318,7 @@ void runBinary(char *args[], int start, int index)
             {
                 wait(0);
             }
-            free(bin); // free bin if accessible
+            free(bin); // free bin if X_OK
             return;
         }
         free(bin); // free bin after every iteration
@@ -388,6 +389,37 @@ void executeCommands(char *tokens[1024], int ntokens)
     }
 }
 
+void checkRedirection(char *tokens[1024], int ntokens)
+{
+    for (int i = 0; i < ntokens; i++)
+    {
+        if (strcmp(tokens[i], ">") != 0)
+        {
+            continue;
+        }
+        if (i == 0 || i == ntokens || i + 1 > ntokens || strcmp(tokens[i - 1], "&") == 0)
+        {
+            printError();
+            errorState = 1;
+            break;
+        }
+        if (i + 1 == ntokens || strcmp(tokens[i + 1], "&") == 0)
+        {
+            printError();
+            errorState = 1;
+            break;            
+        }
+        if (i + 2 == ntokens || ((i + 2 <= ntokens) && strcmp(tokens[i + 2], "&") == 0))
+        {
+            continue;
+        }
+        printError(); // defaults to error
+        errorState = 1;
+        break;                
+    }
+    
+}
+
 void runShell(FILE *input)
 {
     char *line = NULL;
@@ -412,6 +444,7 @@ void runShell(FILE *input)
             break;
         }
         ntokens = tokenize(line, tokens);
+        checkRedirection(tokens, ntokens);
         free(line);
         line = NULL;
         if (errorState == 0)
