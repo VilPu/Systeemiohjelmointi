@@ -1,2 +1,2 @@
-PROJECT 2 - my-grep
+My-grep
 

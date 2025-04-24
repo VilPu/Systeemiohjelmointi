@@ -1,1 +1,1 @@
-PROJECT 2 - my-cat
+My-cat
