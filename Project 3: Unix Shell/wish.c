@@ -172,7 +172,7 @@ int parseToken(char *tokens[1024], char *token, int row)
         free(tokenCopy);
         return row;
     }
-    if (&tokenCopy[0] == ptrAmpersand && row == 0)
+    if (&tokenCopy[0] == ptrAmpersand && row == 0) // first char is & on first token
     {
         findNextSpecial(&ptrAmpersand, '&');
     }
@@ -280,7 +280,7 @@ void allocateArgs(char *args[], char *tokens[], int index, int start)
         {
             raiseError();
         }
-        strcpy(args[i], tokens[i + start]);
+        strcpy(args[i], tokens[i + start]); // subset of tokens from start to (index - start)
     }
 }
 
@@ -364,13 +364,13 @@ int runCommand(char *tokens[1024], int *start, int ntokens, int builtIn)
     char *token = tokens[index];
     pid_t processId = 0;
 
-    if (strcmp(token, "&") == 0 || strcmp(token, ">") == 0)
+    if (strcmp(token, "&") == 0 || strcmp(token, ">") == 0) // skip specials
     {
         *start = index + 1;
         return 0;
     }
 
-    while (strcmp(token, "&") != 0 && strcmp(token, ">") != 0 && index < ntokens)
+    while (strcmp(token, "&") != 0 && strcmp(token, ">") != 0 && index < ntokens) // iterate command and arguments
     {
         index++;
         token = tokens[index];
@@ -404,7 +404,7 @@ int runCommand(char *tokens[1024], int *start, int ntokens, int builtIn)
         {
             processId = runBinary(args, *start, index, tokens[index + 1]);
             freeArgs(args, index, *start);
-            *start = index + 2;
+            *start = index + 2; // skip redirect and filename
             return processId;
         }
         else
@@ -462,27 +462,27 @@ void executeCommands(char *tokens[1024], int ntokens)
     }
 }
 
-void checkRedirection(char *tokens[1024], int ntokens)
+void checkRedirection(char *tokens[1024], int ntokens) // checks all tokens
 {
     for (int i = 0; i < ntokens; i++)
     {
-        if (strcmp(tokens[i], ">") != 0)
+        if (strcmp(tokens[i], ">") != 0) // skip non '>' chars
         {
             continue;
         }
-        if (i == 0 || i == ntokens || i + 1 > ntokens || strcmp(tokens[i - 1], "&") == 0)
+        if (i == 0 || i == ntokens || i + 1 > ntokens || strcmp(tokens[i - 1], "&") == 0) // & before redirect -> failure
         {
             printError();
             ERROR_STATE = 1;
             break;
         }
-        if (i + 1 == ntokens || strcmp(tokens[i + 1], "&") == 0)
+        if (i + 1 == ntokens || strcmp(tokens[i + 1], "&") == 0) // & after redirect -> failure
         {
             printError();
             ERROR_STATE = 1;
             break;
         }
-        if (i + 2 == ntokens || ((i + 2 <= ntokens) && strcmp(tokens[i + 2], "&") == 0))
+        if (i + 2 == ntokens || ((i + 2 <= ntokens) && strcmp(tokens[i + 2], "&") == 0)) // after redirect and filename either '&' or tokens  end
         {
             continue;
         }
@@ -503,7 +503,7 @@ void runShell(FILE *input)
 
     while (1 == 1)
     {
-        if (input == stdin)
+        if (input == stdin) // if not in batch mode
         {
             printf("wish> ");
         }
@@ -542,10 +542,10 @@ int main(int argc, char const *argv[])
 
     switch (argc)
     {
-    case 1:
+    case 1: // interactive mode
         runShell(stdin);
         break;
-    case 2:
+    case 2: // batch mode
         file = fopen(argv[1], "r");
         if (file == NULL)
         {
@@ -555,7 +555,7 @@ int main(int argc, char const *argv[])
         fclose(file);
         break;
 
-    default:
+    default: // error if argc is incorrect
         raiseError();
         break;
     }
