@@ -25,19 +25,19 @@ void uncompress(char str[])
     
 }
 
-// reads a file line by line using the readLineCharbyChar function
+// reads a file 5 byte entry by 5 byte entry using fread()
 // returns void
 void readFile(FILE *file)
 {
-    int test;
+    int count;
     size_t bytesRead;
 
     checkFile(file);
-    while ((bytesRead = fread(&test, sizeof(int), 1, file)) > 0)
+    while ((bytesRead = fread(&count, sizeof(int), 1, file)) > 0)
     {
         char c;
         fread(&c, 1, 1, file);
-        for (size_t i = 0; i < test; i++)
+        for (size_t i = 0; i < count; i++)
         {
             printf("%c", c);
         }
