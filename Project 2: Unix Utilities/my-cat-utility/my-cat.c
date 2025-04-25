@@ -39,8 +39,7 @@ char *readLineCharbyChar(FILE *file)
     {
         if (c == EOF)
         {
-            free(line);
-            return NULL;
+            return line;
         }
         line = realloc(line, (strlen(line) + sizeof(c)));
         checkMallocChar(line);
