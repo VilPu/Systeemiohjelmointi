@@ -198,7 +198,7 @@ int parseToken(char *tokens[1024], char *token, int row)
     }
 
     newToken = strtok(tokenCopy, "&>");
-    while (newToken != NULL)
+    while (newToken != NULL && row < 1024)
     {
         if (ptrAmpersand != NULL && ptrRedirect == NULL) // only ampersand is found
         {
@@ -244,6 +244,7 @@ int tokenize(char *line, char *tokens[1024])
     {
         if (row == 1024) // avoid index out of bounds error
         {
+            row = 1023; // token n. 1024 was never saved -> return lastly saved (n. 1023) to avoid segmentation fault
             break;
         }
         row = parseToken(tokens, token, row);
