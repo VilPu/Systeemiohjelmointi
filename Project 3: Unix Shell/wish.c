@@ -3,6 +3,8 @@
 #include <string.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <sys/stat.h>
+#include <sys/wait.h>
 
 enum BuiltIn
 {
@@ -83,7 +85,7 @@ void clearTokens(char *tokens[1024], int range)
 
 void saveToken(char *tokens[1024], char *token, int *row)
 {
-    tokens[*row] = malloc(strlen(token));
+    tokens[*row] = malloc(strlen(token) + 1);
     if (tokens[*row] == NULL)
     {
         raiseError();
@@ -145,9 +147,9 @@ void checkConsecutiveSpecials(char *token)
 
 int parseToken(char *tokens[1024], char *token, int row)
 {
-    char *ptrAmpersand;
-    char *ptrRedirect;
-    char *newToken;
+    char *ptrAmpersand = NULL;
+    char *ptrRedirect = NULL;
+    char *newToken = NULL;
 
     char *tokenCopy = malloc(strlen(token) + 2); // copy to avoid changes to original
     if (tokenCopy == NULL)
@@ -234,8 +236,8 @@ int parseToken(char *tokens[1024], char *token, int row)
 int tokenize(char *line, char *tokens[1024])
 {
     const char delim[5] = " \t\n"; // tabs, whitespaces and newlines
-    char *token;
-    char *statePtr;
+    char *token = NULL;
+    char *statePtr = NULL;
     int row = 0;
 
     token = strtok_r(line, delim, &statePtr);
@@ -277,7 +279,7 @@ void allocateArgs(char *args[], char *tokens[], int index, int start)
 {
     for (int i = 0; i < index - start; i++)
     {
-        if ((args[i] = malloc(strlen(tokens[start]))) == NULL)
+        if ((args[i] = malloc(strlen(tokens[i + start]) + 1)) == NULL)
         {
             raiseError();
         }
@@ -293,7 +295,7 @@ void biPath(char *args[], int argc)
     for (int i = 1; i < argc; i++) // starts at 1 so 'path' is not included
     {
         int varIdx = i - 1;
-        if ((PATH_VARIABLES[varIdx] = malloc(strlen(args[i]))) == NULL)
+        if ((PATH_VARIABLES[varIdx] = malloc(strlen(args[i]) + 1)) == NULL)
         {
             NPATH_VARIABLES = varCount;
             freePathVariables();
@@ -328,6 +330,7 @@ pid_t runBinary(char *args[], int start, int index, char *outputFile)
         {
             break;
         }
+        bin[0] = '\0'; // initialize bin
         strcat(bin, PATH_VARIABLES[i]);
         strcat(bin, "/");
         strcat(bin, args[0]);
@@ -349,7 +352,6 @@ pid_t runBinary(char *args[], int start, int index, char *outputFile)
                 execv(bin, args);
                 raiseError(); // if got here execv encountered error
             }
-            close(fileRedirect);
             free(bin); // free bin if X_OK
             return id; // return child process id
         }
@@ -371,11 +373,16 @@ int runCommand(char *tokens[1024], int *start, int ntokens, int builtIn)
         return 0;
     }
 
-    while (strcmp(token, "&") != 0 && strcmp(token, ">") != 0 && index < ntokens) // iterate command and arguments
+    while (index < ntokens) // iterate command and arguments
     {
-        index++;
         token = tokens[index];
+        if (strcmp(token, "&") == 0 || strcmp(token, ">") == 0)
+        {
+            break;
+        }
+        index++;
     }
+    
     int argc = index - *start;
     char *args[argc];
     allocateArgs(args, tokens, index, *start);
@@ -497,7 +504,7 @@ void runShell(FILE *input)
 {
     char *line = NULL;
     size_t size = 0;
-    ssize_t nread;
+    ssize_t nread = 0;
 
     char *tokens[1024];
     int ntokens = 0;
@@ -514,6 +521,7 @@ void runShell(FILE *input)
         {
             free(line);
             clearTokens(tokens, ntokens);
+            freePathVariables();
             break;
         }
         ntokens = tokenize(line, tokens);
@@ -532,7 +540,7 @@ void runShell(FILE *input)
 
 int main(int argc, char const *argv[])
 {
-    FILE *file;
+    FILE *file = NULL;
 
     if ((PATH_VARIABLES[0] = malloc(sizeof(char) * 6)) == NULL)
     {
